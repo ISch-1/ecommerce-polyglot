@@ -1,0 +1,217 @@
+# ecommerce-polyglot — local development stack
+#
+# Profiles let you start only what you need:
+#
+#   docker compose up -d                    # default: catalog stack (postgres, redis, kafka, observability)
+#   docker compose --profile full up -d     # full polyglot stack (adds mongo, neo4j, cassandra, debezium)
+#
+# Named volumes let you `docker compose down` without losing data.
+# Remove them with `docker compose down -v`.
+
+services:
+
+  # ============================================================
+  # CATALOG STACK — always on
+  # ============================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ecommerce
+      POSTGRES_DB: catalog
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce -d catalog"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"          # ready for Debezium in phase 2
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: ecp-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ============================================================
+  # OBSERVABILITY — always on
+  # ============================================================
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ecp-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: ecp-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    container_name: ecp-otel
+    restart: unless-stopped
+    ports:
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "8888:8888"    # collector's own metrics
+    volumes:
+      - ./infra/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    depends_on:
+      - jaeger
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: ecp-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"   # UI
+      - "14250:14250"   # gRPC ingest (used by collector)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  # ============================================================
+  # FULL POLYGLOT STACK — opt-in with `--profile full`
+  # ============================================================
+
+  mongodb:
+    image: mongo:7
+    container_name: ecp-mongo
+    profiles: ["full"]
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ecommerce
+      MONGO_INITDB_ROOT_PASSWORD: ecommerce
+
+  neo4j:
+    image: neo4j:5.24-community
+    container_name: ecp-neo4j
+    profiles: ["full"]
+    restart: unless-stopped
+    ports:
+      - "7474:7474"    # HTTP browser
+      - "7687:7687"    # Bolt driver
+    volumes:
+      - neo4j-data:/data
+    environment:
+      NEO4J_AUTH: neo4j/ecommerce
+      NEO4J_PLUGINS: '["apoc"]'
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: ecp-cassandra
+    profiles: ["full"]
+    restart: unless-stopped
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: ecp-cluster
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 512M
+
+  # Debezium is scaffolded for phase 2 (see docs/adr/0003-outbox-pattern-for-events.md).
+  # kafka-connect:
+  #   image: debezium/connect:2.7
+  #   container_name: ecp-debezium
+  #   profiles: ["full"]
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8083:8083"
+  #   environment:
+  #     BOOTSTRAP_SERVERS: kafka:9092
+  #     GROUP_ID: 1
+  #     CONFIG_STORAGE_TOPIC: connect_configs
+  #     OFFSET_STORAGE_TOPIC: connect_offsets
+  #     STATUS_STORAGE_TOPIC: connect_statuses
+  #   depends_on:
+  #     - kafka
+  #     - postgres
+
+volumes:
+  postgres-data:
+  redis-data:
+  mongo-data:
+  neo4j-data:
+  cassandra-data:
+  prometheus-data:
+  grafana-data:

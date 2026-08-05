@@ -1,0 +1,94 @@
+{
+  "uid": "catalog-overview",
+  "title": "Catalog — Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-15m", "to": "now" },
+  "refresh": "10s",
+  "tags": ["ecommerce-polyglot", "catalog"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(http_server_requests_seconds_count, service)",
+        "refresh": 1,
+        "includeAll": false,
+        "current": { "text": "ecommerce-polyglot", "value": "ecommerce-polyglot" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP request rate — /api/v1/products",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{service=\"$service\", uri=~\"/api/v1/products.*\"}[1m]))",
+          "legendFormat": "{{uri}} — {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP latency p95 — /api/v1/products",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{service=\"$service\", uri=~\"/api/v1/products.*\"}[1m])))",
+          "legendFormat": "p95 {{uri}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(http_server_requests_seconds_bucket{service=\"$service\", uri=~\"/api/v1/products.*\"}[1m])))",
+          "legendFormat": "p99 {{uri}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Redis cache hit ratio (catalog.products)",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(cache_gets_total{cache=\"catalog.products\", result=\"hit\"}[5m])) / clamp_min(sum(rate(cache_gets_total{cache=\"catalog.products\"}[5m])), 1)"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1 }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Outbox — pending events",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "outbox_pending_events{service=\"$service\"}",
+          "legendFormat": "pending"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "JVM heap used",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{service=\"$service\", area=\"heap\"})",
+          "legendFormat": "heap"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    baseline-on-migrate: true
+
+catalog:
+  outbox:
+    poll-interval-ms: 100
+    batch-size: 50
+  cache:
+    ttl: PT30S
+    singleflight:
+      timeout: PT2S
+
+logging:
+  level:
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN
