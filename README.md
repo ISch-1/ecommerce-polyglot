@@ -43,13 +43,7 @@ Full sequence diagrams in [`docs/architecture.md`](docs/architecture.md).
 
 Prerequisites: JDK 21, Docker (with Compose v2), `curl`, optionally `k6` for load tests.
 
-One-time setup, only on a fresh clone (generates the `mvnw` / `mvnw.cmd` wrapper scripts — the `.mvn/wrapper/maven-wrapper.properties` is committed):
-
-```bash
-mvn -N wrapper:wrapper -Dmaven=3.9.9
-```
-
-If you don't have `mvn` handy, install Maven or replace `./mvnw` with your system `mvn` in the commands below.
+The Maven wrapper (`./mvnw`) is committed, so a JDK is all you need to build.
 
 ```bash
 # 1. bring up the catalog stack (Postgres, Redis, Kafka, Prometheus, Grafana, Jaeger, OTel)

@@ -10,7 +10,7 @@ import com.ecommerce.support.IntegrationTestBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
@@ -89,17 +89,32 @@ class CatalogApiIT extends IntegrationTestBase {
                         .anySatisfy(key -> assertThat(key).contains(id.toString()))
         );
 
-        // 3. Kafka received the ProductCreated event via the outbox publisher.
-        var received = new ConcurrentLinkedQueue<String>();
+        // 3. Kafka received this product's ProductCreated event via the outbox publisher.
+        //    Other tests publish to the same topic and the consumer reads from the
+        //    earliest offset, so match on the record key (the product id) instead
+        //    of assuming the first message is ours.
+        var received = new ConcurrentLinkedQueue<ConsumerRecord<String, String>>();
         Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
-            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofMillis(300));
-            records.forEach(r -> received.add(r.value()));
-            assertThat(received).isNotEmpty();
-            String first = received.peek();
-            assertThat(first).contains("\"sku\"");
-            JsonNode payload = mapper.readTree(first);
-            assertThat(payload.get("id").asText()).isEqualTo(id.toString());
+            kafkaConsumer.poll(Duration.ofMillis(300)).forEach(received::add);
+            assertThat(received).anySatisfy(record -> {
+                assertThat(record.key()).isEqualTo(id.toString());
+                assertThat(record.value()).contains("\"sku\"");
+                assertThat(mapper.readTree(record.value()).get("id").asText()).isEqualTo(id.toString());
+            });
         });
+    }
+
+    @Test
+    @DisplayName("GET /products/{id} answers a cache hit with the same body as the miss")
+    void cacheHitReturnsSameProduct() {
+        UUID id = createSampleProduct();
+        ResponseEntity<JsonNode> miss = rest.getForEntity("/api/v1/products/" + id, JsonNode.class);
+        assertThat(redis.keys("ecp:catalog.products::*"))
+                .anySatisfy(key -> assertThat(key).contains(id.toString()));
+
+        ResponseEntity<JsonNode> hit = rest.getForEntity("/api/v1/products/" + id, JsonNode.class);
+        assertThat(hit.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(hit.getBody()).isEqualTo(miss.getBody());
     }
 
     @Test

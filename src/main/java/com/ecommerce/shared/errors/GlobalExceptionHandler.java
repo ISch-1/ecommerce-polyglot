@@ -3,7 +3,6 @@ package com.ecommerce.shared.errors;
 import java.time.Instant;
 import java.util.List;
 
-import com.ecommerce.catalog.domain.ProductNotFoundException;
 import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,9 +20,9 @@ public class GlobalExceptionHandler {
 
     private final Tracer tracer;
 
-    @ExceptionHandler(ProductNotFoundException.class)
-    public ResponseEntity<ApiError> productNotFound(ProductNotFoundException e) {
-        return build(HttpStatus.NOT_FOUND, "product.not_found", e.getMessage(), List.of());
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ApiError> notFound(NotFoundException e) {
+        return build(HttpStatus.NOT_FOUND, e.code(), e.getMessage(), List.of());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

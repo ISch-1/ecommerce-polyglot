@@ -53,15 +53,15 @@ spring:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 1
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # The outbox stores the payload as JSON and the publisher sends that text as
+      # is; a JsonSerializer here would encode it a second time as a JSON string.
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
     consumer:
       group-id: ecommerce-polyglot
       auto-offset-reset: earliest
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "com.ecommerce.*"
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 server:
   port: 8080

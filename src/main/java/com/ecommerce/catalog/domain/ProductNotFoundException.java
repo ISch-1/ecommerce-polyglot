@@ -2,8 +2,10 @@ package com.ecommerce.catalog.domain;
 
 import java.util.UUID;
 
-public class ProductNotFoundException extends RuntimeException {
+import com.ecommerce.shared.errors.NotFoundException;
+
+public class ProductNotFoundException extends NotFoundException {
     public ProductNotFoundException(UUID id) {
-        super("Product not found: " + id);
+        super("product.not_found", "Product not found: " + id);
     }
 }

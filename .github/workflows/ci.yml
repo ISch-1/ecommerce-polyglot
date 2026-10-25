@@ -75,10 +75,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Image references must be lowercase; the owner (ISch-1) is not.
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ecommerce-polyglot:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
       - name: Build image with Spring Boot buildpacks
-        run: |
-          ./mvnw -B -ntp -DskipTests spring-boot:build-image \
-            -Dspring-boot.build-image.imageName=ghcr.io/${{ github.repository_owner }}/ecommerce-polyglot:${{ github.sha }}
+        run: ./mvnw -B -ntp -DskipTests spring-boot:build-image -Dspring-boot.build-image.imageName="$IMAGE"
 
       - name: Push image
-        run: docker push ghcr.io/${{ github.repository_owner }}/ecommerce-polyglot:${{ github.sha }}
+        run: docker push "$IMAGE"

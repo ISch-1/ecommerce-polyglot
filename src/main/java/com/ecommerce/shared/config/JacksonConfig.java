@@ -1,6 +1,5 @@
 package com.ecommerce.shared.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
@@ -17,12 +16,7 @@ public class JacksonConfig {
                 .featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
-    /**
-     * Explicit bean so {@link com.ecommerce.shared.outbox.Outbox} always
-     * receives the same instance the web layer uses.
-     */
-    @Bean
-    public ObjectMapper outboxObjectMapper(ObjectMapper primary) {
-        return primary;
-    }
+    // No ObjectMapper bean here on purpose: declaring one switches off Spring
+    // Boot's auto-configured mapper, and the Outbox already receives that same
+    // single instance (with the customizer above applied) by type.
 }

@@ -2,6 +2,10 @@
 -- Owns products and their categories. Stock is authoritative here; the cart
 -- reads it directly and orders decrement it in a single transaction.
 
+-- pg_trgm powers the trigram index on products.name; it must exist before that
+-- index is created. IF NOT EXISTS keeps it safe on shared instances.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE categories (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        VARCHAR(120) NOT NULL UNIQUE,
@@ -26,7 +30,3 @@ CREATE TABLE products (
 CREATE INDEX idx_products_active ON products(active);
 CREATE INDEX idx_products_category ON products(category_id) WHERE category_id IS NOT NULL;
 CREATE INDEX idx_products_name_trgm ON products USING gin (name gin_trgm_ops);
-
--- pg_trgm powers the trigram index above; created with IF NOT EXISTS so it's
--- safe on shared instances.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
